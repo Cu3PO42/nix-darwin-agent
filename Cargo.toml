@@ -1,5 +1,6 @@
 [package]
-name = "nix-agent"
+name = "nix-launch-agent"
+description = "A launch agent for mounting /nix and starting the nix-daemon."
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +8,9 @@ edition = "2021"
 security-framework = "2.9.1"
 core-foundation = "0.9"
 libc = "0.2"
+
+[package.metadata.bundle]
+name = "Nix-LaunchAgent"
+identifier = "com.selcyan.nix-launch-agent"
+#icon = ["32x32.png", "128x128.png", "128x128@2x.png"]
+category = "Developer Tool"

@@ -1,9 +1,12 @@
 use std::ffi::{CString, CStr};
+use std::io::Read;
 use std::os::fd::{FromRawFd, AsRawFd};
 use std::{io::Write, process::exit};
 
+const ACCOUNT_NAME: &str = "Nix Store";
+
 fn get_passphrase(uuid: &str) -> Result<Vec<u8>, security_framework::base::Error> {
-    security_framework::passwords::get_generic_password(uuid, "Nix Store")
+    security_framework::passwords::get_generic_password(uuid, ACCOUNT_NAME)
 }
 
 fn mount_disk(uuid: &str, mountpoint: &str, passphrase: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
@@ -81,26 +84,53 @@ fn exec_nix_daemon(binary: &CStr) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+fn install_key(uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let mut key = Vec::new();
+    std::io::stdin().read_to_end(&mut key)?;
+    security_framework::passwords::set_generic_password(uuid, ACCOUNT_NAME, &key)?;
+    Ok(())
+}
+
+fn print_usage() {
+    println!("Usage: nix-agent launch <disk-uuid> <nix-binary>");
+    println!(" .     nix-agent install <disk-uuid>");
+    println!("");
+    println!("The install command accepts the passphrase on stdin.");
+    exit(1);
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args();
     let _ = args.next(); // Drop the program name.
 
-    if let (Some(uuid), Some(binary)) = (args.next(), args.next()) {
-        let passphrase = get_passphrase(&uuid)?;
-        mount_disk(&uuid, "/nix", &passphrase)?;
-        
-        let mut binary = binary.into_bytes();
-        binary.push(0);
-        // Should never fail: we have explicitly added a NUL at the end and the contents
-        // prior are read from the OS args, which do not contain NUL-bytes on macOS
-        let binary = CString::from_vec_with_nul(binary)?;
+    match args.next() {
+        Some(ref s) if s == "launch" => {
+            if let (Some(uuid), Some(binary)) = (args.next(), args.next()) {
+                let passphrase = get_passphrase(&uuid)?;
+                mount_disk(&uuid, "/nix", &passphrase)?;
+                
+                let mut binary = binary.into_bytes();
+                binary.push(0);
+                // Should never fail: we have explicitly added a NUL at the end and the contents
+                // prior are read from the OS args, which do not contain NUL-bytes on macOS
+                let binary = CString::from_vec_with_nul(binary)?;
 
-        wait_for_binary(&binary)?;
-        exec_nix_daemon(&binary)?;
-
-        Ok(())
-    } else {
-        println!("Usage: nix-agent <disk-uuid> <nix-binary>");
-        exit(1);
+                wait_for_binary(&binary)?;
+                exec_nix_daemon(&binary)?;
+            } else {
+                print_usage();
+            }
+        }
+        Some(ref s) if s == "install" => {
+            if let Some(uuid) = args.next() {
+                install_key(&uuid)?;
+            } else {
+                print_usage();
+            }
+        }
+        _ => {
+            print_usage();
+        }
     }
+    Ok(())
 }
